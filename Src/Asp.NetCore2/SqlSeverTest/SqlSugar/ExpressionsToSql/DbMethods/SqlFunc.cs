@@ -37,9 +37,21 @@ namespace SqlSugar
         {
             return thisValue.Contains(parameterValue);
         }
-        public static bool ContainsArray<T>(T[] thisValue, object parameterValue)
+        public static bool ContainsArray<T>(T[] thisValue, object InField)
         {
-            return thisValue.Contains((T)parameterValue);
+            return thisValue.Contains((T)InField);
+        }
+        public static bool ContainsArray<T>(List<T> thisValue, object InField)
+        {
+            return thisValue.Contains((T)InField);
+        }
+        public static bool ContainsArrayUseSqlParameters<T>(List<T> thisValue, object InField)
+        {
+            return thisValue.Contains((T)InField);
+        }
+        public static bool ContainsArrayUseSqlParameters<T>(T[] thisValue, object InField)
+        {
+            return thisValue.Contains((T)InField);
         }
         public static bool StartsWith(string thisValue, string parameterValue)
         {
@@ -101,6 +113,7 @@ namespace SqlSugar
         public static TResult AggregateMin<TResult>(TResult thisValue) { throw new NotSupportedException("Can only be used in expressions"); }
         public static TResult AggregateMax<TResult>(TResult thisValue) { throw new NotSupportedException("Can only be used in expressions"); }
         public static int AggregateCount<TResult>(TResult thisValue) { throw new NotSupportedException("Can only be used in expressions"); }
+        public static int AggregateDistinctCount<TResult>(TResult thisValue) { throw new NotSupportedException("Can only be used in expressions"); }
         public static TResult MappingColumn<TResult>(TResult oldColumnName,string newColumnName) { throw new NotSupportedException("Can only be used in expressions"); }
         /// <summary>
         ///Example: new NewT(){name=SqlFunc.GetSelfAndAutoFill(it)}  Generated SQL   it.*
@@ -118,5 +131,6 @@ namespace SqlSugar
         /// <returns></returns>
         public static Subqueryable<T> Subqueryable<T>() where T:class,new(){ throw new NotSupportedException("Can only be used in expressions");}
         public static CaseThen  IF(bool condition) { throw new NotSupportedException("Can only be used in expressions"); }
+        public static int CharIndex(string findChar,string searchValue) { throw new NotSupportedException("Can only be used in expressions"); }
     }
 }

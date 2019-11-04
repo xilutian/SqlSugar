@@ -27,12 +27,13 @@ namespace SqlSugar
 
         #region Service object
         public StringBuilder sql { get; set; }
-        public SqlSugarClient Context { get; set; }
+        public SqlSugarProvider Context { get; set; }
         public ILambdaExpressions LambdaExpressions { get; set; }
         public ISqlBuilder Builder { get; set; }
         #endregion
 
         #region Splicing basic
+        public List<string> IgnoreColumns { get; set; }
         public bool IsCount { get; set; }
         public int? Skip { get; set; }
         public int ExternalPageIndex { get; set; }
@@ -49,6 +50,7 @@ namespace SqlSugar
         public string GroupByValue { get; set; }
         public string PartitionByValue { get; set; }
         public int WhereIndex { get; set; }
+        public bool IsDistinct { get; set; }
         public int JoinIndex { get; set; }
         public bool IsDisabledGobalFilter { get; set; }
         public virtual List<SugarParameter> Parameters { get; set; }
@@ -224,7 +226,7 @@ namespace SqlSugar
             resolveExpress.MappingTables = Context.MappingTables;
             resolveExpress.IgnoreComumnList = Context.IgnoreColumns;
             resolveExpress.SqlFuncServices = Context.CurrentConnectionConfig.ConfigureExternalServices == null ? null : Context.CurrentConnectionConfig.ConfigureExternalServices.SqlFuncServices;
-            resolveExpress.InitMappingInfo = this.Context.InitMppingInfo;
+            resolveExpress.InitMappingInfo = this.Context.InitMappingInfo;
             resolveExpress.RefreshMapping = () =>
             {
                 resolveExpress.MappingColumns = Context.MappingColumns;
@@ -284,7 +286,7 @@ namespace SqlSugar
                 foreach (var item in gobalFilterList.Where(it => it.IsJoinQuery == !IsSingle()))
                 {
                     var filterResult = item.FilterValue(this.Context);
-                    WhereInfos.Add(this.Builder.AppendWhereOrAnd(this.WhereInfos.IsNullOrEmpty(), filterResult.Sql));
+                    WhereInfos.Add(this.Builder.AppendWhereOrAnd(this.WhereInfos.IsNullOrEmpty(), filterResult.Sql+UtilConstants.Space));
                     var filterParamters = this.Context.Ado.GetParameters(filterResult.Parameters);
                     if (filterParamters.HasValue())
                     {
@@ -363,6 +365,7 @@ namespace SqlSugar
             this._TableNameString = null;
             this.WhereInfos = null;
             this.JoinQueryInfos = null;
+            this.IsDistinct = false;
         }
         public virtual bool IsComplexModel(string sql)
         {
@@ -388,6 +391,10 @@ namespace SqlSugar
                 {
                     this.SelectCacheKey = this.SelectCacheKey + string.Join("-", this._JoinQueryInfos.Select(it => it.TableName));
                 }
+                if (IsDistinct)
+                {
+                    result = " DISTINCT " + result;
+                }
                 return result;
             }
         }
@@ -395,8 +402,23 @@ namespace SqlSugar
         {
             var expression = this.SelectValue as Expression;
             var result = GetExpressionValue(expression, this.SelectType).GetResultString();
-            this.SelectCacheKey = result;
-            return result;
+            if (result == null)
+            {
+                return "*";
+            }
+            if (result.Contains(".*") && this.IsSingle())
+            {
+                return "*";
+            }
+            else
+            {
+                if (expression is LambdaExpression && (expression as LambdaExpression).Body is MethodCallExpression&&this.Context.CurrentConnectionConfig.DbType==DbType.SqlServer&&this.OrderByValue.HasValue())
+                {
+                    result = result + " AS columnName";
+                }
+                this.SelectCacheKey = result;
+                return result;
+            }
         }
         public virtual string GetSelectValueByString()
         {
@@ -408,7 +430,12 @@ namespace SqlSugar
                 {
                     pre = Builder.GetTranslationColumnName(TableShortName) + ".";
                 }
-                result = string.Join(",", this.Context.EntityMaintenance.GetEntityInfo(this.EntityType).Columns.Where(it => !it.IsIgnore).Select(it => pre + Builder.GetTranslationColumnName(it.EntityName, it.PropertyName)));
+                var columns = this.Context.EntityMaintenance.GetEntityInfo(this.EntityType).Columns.Where(it => !it.IsIgnore);
+                if (this.IgnoreColumns.HasValue())
+                {
+                    columns = columns.Where(c => !this.IgnoreColumns.Any(i=>c.PropertyName.Equals(i,StringComparison.CurrentCultureIgnoreCase)||c.DbColumnName.Equals(i,StringComparison.CurrentCultureIgnoreCase))).ToList();
+                }
+                result = string.Join(",", columns.Select(it => pre + Builder.GetTranslationColumnName(it.EntityName, it.PropertyName)));
             }
             else
             {
@@ -507,6 +534,28 @@ namespace SqlSugar
         {
             var result = this.Context.EntityMaintenance.GetTableName(entityName);
             return this.Builder.GetTranslationTableName(result);
+        }
+
+        public void CheckExpression(Expression expression, string methodName)
+        {
+            if (IsSingle() == false&& this.JoinExpression!=null)
+            {
+                var jsoinParameters = (this.JoinExpression as LambdaExpression).Parameters;
+                var currentParametres = (expression as LambdaExpression).Parameters;
+                if ((expression as LambdaExpression).Body.ToString() == "True") {
+                    return;
+                }
+                if (currentParametres != null && currentParametres.Count > 0)
+                {
+                    foreach (var item in currentParametres)
+                    {
+                        var index = currentParametres.IndexOf(item);
+                        var name = item.Name;
+                        var joinName = jsoinParameters[index].Name;
+                        Check.Exception(name.ToLower() != joinName.ToLower(), ErrorMessage.ExpressionCheck, joinName, methodName, name);
+                    }
+                }
+            }
         }
     }
 }
